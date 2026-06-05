@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Budget">
+<meta name="theme-color" content="#0f1117">
+<title>Budget Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f1117;--bg2:#161922;--bg3:#1e2230;--bg4:#252a3a;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e8eaf0;--text2:#8b91a8;--text3:#555d78;
+  --green:#2dd4a0;--green-dim:rgba(45,212,160,0.12);
+  --red:#f26b6b;--red-dim:rgba(242,107,107,0.12);
+  --amber:#f0a855;--amber-dim:rgba(240,168,85,0.12);
+  --blue:#5b9cf6;--blue-dim:rgba(91,156,246,0.12);
+  --mono:'DM Mono',monospace;--sans:'DM Sans',sans-serif;
+  --r:12px;--rs:8px;
+}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;line-height:1.5;overscroll-behavior:none}
+body{display:flex;flex-direction:column;max-width:480px;margin:0 auto;min-height:100vh}
+
+/* HEADER */
+.hdr{padding:14px 20px 10px;border-bottom:0.5px solid var(--border);background:var(--bg);z-index:10}
+.hdr-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:2px}
+.app-name{font-family:var(--mono);font-size:12px;color:var(--text3);letter-spacing:.1em;text-transform:uppercase}
+.mpill{display:flex;align-items:center;gap:5px;background:var(--bg3);border:0.5px solid var(--border2);border-radius:99px;padding:3px 3px 3px 11px}
+.mpill span{font-family:var(--mono);font-size:12px;font-weight:500;min-width:68px;text-align:center}
+.nbtn{width:24px;height:24px;border-radius:50%;border:0.5px solid var(--border2);background:var(--bg4);color:var(--text2);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all .15s}
+.nbtn:hover{background:var(--bg3);color:var(--text)}
+.nbtn:disabled{opacity:.25;cursor:default}
+.ndot{width:6px;height:6px;border-radius:50%;background:var(--green);margin-left:1px}
+
+/* BANNER */
+.banner{margin:14px 20px 0;padding:9px 13px;border-radius:var(--rs);font-size:13px;font-weight:500;display:flex;align-items:center;gap:8px}
+.bok{background:var(--green-dim);color:var(--green);border:0.5px solid rgba(45,212,160,0.2)}
+.bwarn{background:var(--red-dim);color:var(--red);border:0.5px solid rgba(242,107,107,0.2)}
+.bdot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.bok .bdot{background:var(--green)}.bwarn .bdot{background:var(--red)}
+
+/* METRICS */
+.metrics{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:12px 20px}
+.mc{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--r);padding:11px 13px}
+.mc-label{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:5px}
+.mc-val{font-family:var(--mono);font-size:19px;font-weight:500}
+.g{color:var(--green)}.r{color:var(--red)}.a{color:var(--amber)}.b{color:var(--blue)}
+
+/* SECTION */
+.sec{margin:0 20px 14px}
+.sec-title{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.08em;text-transform:uppercase;margin-bottom:7px;padding-bottom:5px;border-bottom:0.5px solid var(--border)}
+.card{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--r);overflow:hidden}
+
+/* ROWS */
+.row{display:flex;align-items:center;gap:9px;padding:10px 13px;border-bottom:0.5px solid var(--border);transition:background .1s}
+.row:last-child{border-bottom:none}
+.rname{flex:1;min-width:0}
+.rname strong{display:block;font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rname small{font-size:11px;color:var(--text3)}
+.ramt{font-family:var(--mono);font-size:13px;font-weight:500;white-space:nowrap}
+.ramt.r{color:var(--red)}.ramt.g{color:var(--green)}.ramt.a{color:var(--amber)}
+.row.is-paid .rname strong{text-decoration:line-through;color:var(--text3)}
+
+/* CHECK */
+.chk{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .15s;color:transparent;font-size:11px}
+.chk.paid{background:var(--green);border-color:var(--green);color:#0f1117}
+.chk:hover:not(.paid){border-color:var(--green);color:var(--green)}
+
+/* BADGE */
+.badge{font-size:10px;padding:2px 6px;border-radius:99px;white-space:nowrap;font-family:var(--mono)}
+.br{background:var(--red-dim);color:var(--red)}
+.bg{background:var(--green-dim);color:var(--green)}
+.ba{background:var(--amber-dim);color:var(--amber)}
+.bb{background:var(--blue-dim);color:var(--blue)}
+.bd{background:var(--bg3);color:var(--text3)}
+
+/* PROGRESS */
+.pb{height:3px;background:var(--bg4);border-radius:99px;overflow:hidden;margin-top:6px}
+.pf{height:100%;border-radius:99px;transition:width .3s}
+
+/* LOAN CARD */
+.lcard{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden}
+.lhdr{display:flex;align-items:center;gap:9px;padding:11px 13px;border-bottom:0.5px solid var(--border)}
+.lgrid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--border)}
+.lcell{background:var(--bg2);padding:8px 10px}
+.lclabel{font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:2px}
+.lcval{font-size:12px;font-weight:500;font-family:var(--mono)}
+.lprog{padding:8px 13px 10px}
+.lprow{display:flex;justify-content:space-between;font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:3px}
+
+/* DEL */
+.del{background:none;border:none;cursor:pointer;color:var(--text3);font-size:16px;padding:2px 4px;line-height:1;transition:color .1s;flex-shrink:0}
+.del:hover{color:var(--red)}
+
+/* FORM */
+.fcard{background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--r);padding:14px;margin-top:8px}
+.flabel{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.05em;text-transform:uppercase;margin-bottom:4px;display:block}
+.fgrid{display:grid;gap:10px}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.f3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px}
+input,select{width:100%;height:36px;padding:0 9px;background:var(--bg3);border:0.5px solid var(--border2);border-radius:var(--rs);color:var(--text);font-family:var(--sans);font-size:13px;outline:none;-webkit-appearance:none;appearance:none}
+input:focus,select:focus{border-color:var(--blue)}
+input[readonly]{color:var(--green);background:var(--bg4);cursor:default}
+input::placeholder{color:var(--text3)}
+select option{background:var(--bg3)}
+.btn-add{width:100%;height:38px;background:var(--blue-dim);border:0.5px solid rgba(91,156,246,0.3);border-radius:var(--rs);color:var(--blue);font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;transition:all .15s;margin-top:2px}
+.btn-add:hover{background:rgba(91,156,246,0.2)}
+.btn-add:active{transform:scale(0.98)}
+.fhint{font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px}
+.calc-row{background:var(--bg4);border:0.5px solid var(--border2);border-radius:var(--rs);padding:8px 10px;display:flex;justify-content:space-between;align-items:center}
+.calc-row span{font-size:11px;color:var(--text3);font-family:var(--mono)}
+.calc-row strong{font-family:var(--mono);font-size:13px;color:var(--green)}
+.subsep{font-family:var(--mono);font-size:10px;color:var(--text3);letter-spacing:.06em;text-transform:uppercase;padding:7px 13px 3px}
+
+/* NAVBAR */
+.navbar{display:flex;background:var(--bg2);border-top:0.5px solid var(--border);position:sticky;bottom:0;z-index:10;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+.nitem{flex:1;display:flex;flex-direction:column;align-items:center;padding:9px 4px 4px;cursor:pointer;border:none;background:none;color:var(--text3);font-size:10px;font-family:var(--mono);letter-spacing:.04em;gap:3px;transition:color .15s}
+.nitem.active{color:var(--blue)}
+.nico{font-size:17px}
+
+/* SCROLL */
+.scroll{flex:1;overflow-y:auto;padding-bottom:6px}
+.scroll::-webkit-scrollbar{width:0}
+.empty{padding:20px;text-align:center;color:var(--text3);font-size:12px;font-family:var(--mono)}
+.page{display:none}.page.active{display:block}
+
+/* CHART */
+.chwrap{padding:4px 13px 13px;position:relative;height:130px}
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <div class="hdr-top">
+    <span class="app-name">Budget·PH</span>
+    <div class="mpill">
+      <button class="nbtn" id="btn-prev" onclick="shiftM(-1)" aria-label="Previous">&#8249;</button>
+      <span id="mlabel"></span>
+      <button class="nbtn" id="btn-next" onclick="shiftM(1)" aria-label="Next">&#8250;</button>
+      <span class="ndot" id="ndot"></span>
+    </div>
+  </div>
+</div>
+
+<div class="scroll" id="scroll">
+  <div class="page active" id="page-dash"></div>
+  <div class="page" id="page-loans"></div>
+  <div class="page" id="page-income"></div>
+  <div class="page" id="page-bills"></div>
+</div>
+
+<nav class="navbar">
+  <button class="nitem active" onclick="nav('dash')" id="nav-dash"><span class="nico">⊞</span>dash</button>
+  <button class="nitem" onclick="nav('loans')" id="nav-loans"><span class="nico">◈</span>loans</button>
+  <button class="nitem" onclick="nav('income')" id="nav-income"><span class="nico">◎</span>income</button>
+  <button class="nitem" onclick="nav('bills')" id="nav-bills"><span class="nico">◻</span>bills</button>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const STORE = 'budgetph_v2';
+const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+/* ── Live current month from device clock ── */
+const _now = new Date();
+const TODAY = {y: _now.getFullYear(), m: _now.getMonth()+1};
+const TODAY_KEY = mk(TODAY.y, TODAY.m);
+
+function mk(y,m){return `${y}-${String(m).padStart(2,'0')}`;}
+function parseMk(k){const[y,m]=k.split('-');return{y:+y,m:+m};}
+function addM(y,m,n){const d=new Date(y,m-1+n,1);return{y:d.getFullYear(),m:d.getMonth()+1};}
+function mBetween(k1,k2){const a=parseMk(k1),b=parseMk(k2);return(b.y-a.y)*12+(b.m-a.m);}
+function fmtMk(k){const{y,m}=parseMk(k);return`${MN[m-1]} ${y}`;}
+function isFuture(k){return k>TODAY_KEY;}
+function isPast(k){return k<TODAY_KEY;}
+function ph(n){return '₱'+Number(n).toLocaleString('en-PH',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function phc(n){return '₱'+Number(n).toLocaleString('en-PH',{minimumFractionDigits:0,maximumFractionDigits:0});}
+
+/* ── Auto-compute past paid months for a loan ── */
+function autoPaidMonths(startKey, endKey) {
+  const paid = [];
+  let k = startKey;
+  while(k < TODAY_KEY && k <= endKey) {
+    paid.push(k);
+    const {y,m} = parseMk(k);
+    const nx = addM(y,m,1);
+    k = mk(nx.y, nx.m);
+  }
+  return paid;
+}
+
+function seed(){
+  return {
+    viewKey: TODAY_KEY,
+    loans:[
+      {id:1,vendor:'Billease',cat:'Buy Now Pay Later',total:13000,monthly:1577,startKey:'2025-07',endKey:'2027-05',paidMonths:autoPaidMonths('2025-07','2027-05')},
+      {id:2,vendor:'Billease',cat:'Buy Now Pay Later',total:2000,monthly:1111,startKey:'2025-06',endKey:'2025-07',paidMonths:autoPaidMonths('2025-06','2025-07')},
+      {id:3,vendor:'Billease',cat:'Buy Now Pay Later',total:6000,monthly:3320,startKey:'2025-06',endKey:'2025-07',paidMonths:autoPaidMonths('2025-06','2025-07')},
+      {id:4,vendor:'Billease',cat:'Buy Now Pay Later',total:2000,monthly:487,startKey:'2025-06',endKey:'2025-10',paidMonths:autoPaidMonths('2025-06','2025-10')},
+      {id:5,vendor:'Billease',cat:'Buy Now Pay Later',total:2700,monthly:796,startKey:'2025-05',endKey:'2025-08',paidMonths:autoPaidMonths('2025-05','2025-08')},
+      {id:6,vendor:'Billease',cat:'Buy Now Pay Later',total:500,monthly:194,startKey:'2025-05',endKey:'2025-07',paidMonths:autoPaidMonths('2025-05','2025-07')},
+    ],
+    income:[
+      {id:1,label:'Salary – July 2025',amount:28566.77,monthKey:'2025-07',type:'Salary'},
+    ],
+    bills:[],
+    nextId:200,
+  };
+}
+
+let D = JSON.parse(localStorage.getItem(STORE)||'null') || seed();
+if(isFuture(D.viewKey)) D.viewKey = TODAY_KEY;
+function save(){localStorage.setItem(STORE,JSON.stringify(D));}
+
+function getInc(k){return D.income.filter(x=>x.monthKey===k).reduce((s,x)=>s+x.amount,0);}
+function getLoansDue(k){return D.loans.filter(l=>k>=l.startKey&&k<=l.endKey&&!l.paidMonths.includes(k)).reduce((s,l)=>s+l.monthly,0);}
+function getBillsDue(k){return D.bills.filter(b=>b.monthKey===k&&!b.paid).reduce((s,b)=>s+b.amount,0);}
+function loanDone(l){
+  let k=l.startKey;
+  while(k<=l.endKey){
+    if(!l.paidMonths.includes(k))return false;
+    const{y,m}=parseMk(k);const nx=addM(y,m,1);k=mk(nx.y,nx.m);
+  }
+  return true;
+}
+
+let curPage='dash', chartI=null;
+
+function nav(page){
+  curPage=page;
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  document.querySelectorAll('.nitem').forEach(b=>b.classList.remove('active'));
+  document.getElementById('nav-'+page).classList.add('active');
+  document.getElementById('scroll').scrollTop=0;
+  render();
+}
+
+function shiftM(dir){
+  const{y,m}=parseMk(D.viewKey);
+  const nx=addM(y,m,dir);
+  const nk=mk(nx.y,nx.m);
+  if(isFuture(nk)) return;
+  D.viewKey=nk; save(); render();
+}
+
+function render(){
+  const isCur=D.viewKey===TODAY_KEY;
+  document.getElementById('mlabel').textContent=fmtMk(D.viewKey);
+  document.getElementById('btn-next').disabled=isCur;
+  document.getElementById('ndot').style.opacity=isCur?'1':'0.3';
+  document.getElementById('btn-prev').disabled=D.viewKey<='2024-01';
+  if(curPage==='dash') renderDash();
+  if(curPage==='loans') renderLoans();
+  if(curPage==='income') renderIncome();
+  if(curPage==='bills') renderBills();
+}
+
+/* ── DASHBOARD ── */
+function renderDash(){
+  const k=D.viewKey;
+  const inc=getInc(k), ld=getLoansDue(k), bd=getBillsDue(k), due=ld+bd, bal=inc-due;
+  const activeLoans=D.loans.filter(l=>k>=l.startKey&&k<=l.endKey&&!loanDone(l));
+  const activeBills=D.bills.filter(b=>b.monthKey===k&&!b.paid);
+
+  document.getElementById('page-dash').innerHTML=`
+    <div class="banner ${bal>=0?'bok':'bwarn'}">
+      <div class="bdot"></div>
+      ${bal>=0?`On track — ${ph(bal)} remaining`:(`Shortfall of ${ph(Math.abs(bal))}`)}
+    </div>
+    <div class="metrics">
+      <div class="mc"><div class="mc-label">Income</div><div class="mc-val g">${phc(inc)}</div></div>
+      <div class="mc"><div class="mc-label">Loans due</div><div class="mc-val r">${phc(ld)}</div></div>
+      <div class="mc"><div class="mc-label">Bills due</div><div class="mc-val a">${phc(bd)}</div></div>
+      <div class="mc"><div class="mc-val ${bal>=0?'g':'r'}" style="font-size:15px;margin-top:2px">${ph(bal)}</div><div class="mc-label" style="margin-top:4px">remaining</div></div>
+    </div>
+    ${inc>0?`<div class="sec"><div class="card" style="padding:10px 13px">
+      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:4px">
+        <span>Loans ${Math.round(ld/inc*100)}%</span><span>Bills ${Math.round(bd/inc*100)}%</span><span>Free ${Math.round(Math.max(0,bal)/inc*100)}%</span>
+      </div>
+      <div style="display:flex;height:5px;border-radius:99px;overflow:hidden;background:var(--bg4)">
+        <div style="width:${Math.min(100,ld/inc*100)}%;background:var(--red)"></div>
+        <div style="width:${Math.min(100,bd/inc*100)}%;background:var(--amber)"></div>
+        <div style="width:${Math.min(100,Math.max(0,bal)/inc*100)}%;background:var(--green)"></div>
+      </div>
+    </div></div>`:''}
+    <div class="sec">
+      <div class="sec-title">Loans due — ${fmtMk(k)}</div>
+      <div class="card">
+        ${activeLoans.length===0?'<div class="empty">No loans due this month</div>':
+          activeLoans.map(l=>{
+            const paid=l.paidMonths.includes(k);
+            const left=Math.max(0,mBetween(k,l.endKey)+1);
+            return`<div class="row ${paid?'is-paid':''}">
+              <button class="chk ${paid?'paid':''}" onclick="toggleLoan(${l.id},'${k}')" aria-label="Mark paid">✓</button>
+              <div class="rname"><strong>${l.vendor}</strong><small>${l.cat} · ${left} mo left</small></div>
+              <span class="ramt ${paid?'g':'r'}">${ph(l.monthly)}</span>
+            </div>`;
+          }).join('')}
+      </div>
+    </div>
+    ${activeBills.length>0?`<div class="sec">
+      <div class="sec-title">Bills due — ${fmtMk(k)}</div>
+      <div class="card">
+        ${activeBills.map(b=>`<div class="row">
+          <button class="chk" onclick="toggleBill(${b.id})" aria-label="Mark paid">✓</button>
+          <div class="rname"><strong>${b.name}</strong><small>${b.cat}</small></div>
+          <span class="ramt r">${ph(b.amount)}</span>
+        </div>`).join('')}
+      </div>
+    </div>`:''}
+    <div class="sec">
+      <div class="sec-title">Last 6 months</div>
+      <div class="card"><div class="chwrap"><canvas id="hchart" role="img" aria-label="6-month history">History</canvas></div></div>
+    </div>
+    <div style="height:8px"></div>`;
+  drawChart();
+}
+
+function drawChart(){
+  const canvas=document.getElementById('hchart');
+  if(!canvas) return;
+  if(chartI){chartI.destroy();chartI=null;}
+  const labels=[],incD=[],dueD=[];
+  for(let i=5;i>=0;i--){
+    const{y,m}=parseMk(D.viewKey);
+    const nx=addM(y,m,-i); const k=mk(nx.y,nx.m);
+    if(isFuture(k)) continue;
+    labels.push(MN[nx.m-1]+" '"+String(nx.y).slice(2));
+    incD.push(getInc(k));
+    dueD.push(getLoansDue(k)+getBillsDue(k));
+  }
+  chartI=new Chart(canvas,{type:'bar',data:{labels,datasets:[
+    {label:'Income',data:incD,backgroundColor:'rgba(45,212,160,0.45)',borderRadius:3,borderSkipped:false},
+    {label:'Due',data:dueD,backgroundColor:'rgba(242,107,107,0.45)',borderRadius:3,borderSkipped:false},
+  ]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+    scales:{x:{grid:{display:false},ticks:{color:'#555d78',font:{size:9,family:'DM Mono'}}},
+      y:{grid:{color:'rgba(255,255,255,.04)'},ticks:{color:'#555d78',font:{size:9,family:'DM Mono'},callback:v=>v===0?'0':'₱'+v.toLocaleString()}}}}});
+}
+
+/* ── LOANS ── */
+function renderLoans(){
+  const k=D.viewKey;
+  const active=D.loans.filter(l=>!loanDone(l));
+  const done=D.loans.filter(l=>loanDone(l));
+
+  /* Year/month selects for add form */
+  const years=[];
+  for(let y=TODAY.y-1;y<=TODAY.y+3;y++) years.push(y);
+  const yOpts=years.map(y=>`<option value="${y}" ${y===TODAY.y?'selected':''}>${y}</option>`).join('');
+  const mOpts=MN.map((n,i)=>`<option value="${String(i+1).padStart(2,'0')}" ${i+1===TODAY.m?'selected':''}>${n}</option>`).join('');
+
+  document.getElementById('page-loans').innerHTML=`
+    <div class="sec" style="padding-top:14px">
+      <div class="sec-title">Active loans (${active.length})</div>
+      ${active.length===0?'<div class="empty">No active loans</div>':
+        active.map(l=>{
+          const paid=l.paidMonths.includes(k);
+          const isDue=k>=l.startKey&&k<=l.endKey;
+          const totalPaid=l.paidMonths.length*l.monthly;
+          const remaining=Math.max(0,l.total-totalPaid);
+          const mTotal=mBetween(l.startKey,l.endKey)+1;
+          const mLeft=Math.max(0,mBetween(k,l.endKey)+1);
+          const prog=Math.round((l.paidMonths.length/mTotal)*100);
+          const badge=paid?`<span class="badge bg">Paid</span>`:isDue?`<span class="badge br">Due</span>`:`<span class="badge bd">Upcoming</span>`;
+          return`<div class="lcard">
+            <div class="lhdr">
+              <button class="chk ${paid?'paid':''}" onclick="toggleLoan(${l.id},'${k}')" aria-label="Mark paid">✓</button>
+              <div style="flex:1;min-width:0"><strong style="font-size:13px">${l.vendor}</strong><div style="font-size:11px;color:var(--text3)">${l.cat}</div></div>
+              ${badge}
+              <button class="del" onclick="delLoan(${l.id})" aria-label="Delete">×</button>
+            </div>
+            <div class="lgrid">
+              <div class="lcell"><div class="lclabel">Monthly</div><div class="lcval r">${ph(l.monthly)}</div></div>
+              <div class="lcell"><div class="lclabel">Balance</div><div class="lcval a">${phc(remaining)}</div></div>
+              <div class="lcell"><div class="lclabel">Left</div><div class="lcval">${mLeft}/${mTotal} mo</div></div>
+            </div>
+            <div class="lprog">
+              <div class="lprow"><span>${fmtMk(l.startKey)} – ${fmtMk(l.endKey)}</span><span>${prog}% paid</span></div>
+              <div class="pb"><div class="pf" style="width:${prog}%;background:var(--green)"></div></div>
+            </div>
+          </div>`;
+        }).join('')}
+      ${done.length>0?`<div style="font-size:11px;color:var(--text3);font-family:var(--mono);padding:2px 0 6px">${done.length} fully paid off</div>`:''}
+    </div>
+    <div class="sec">
+      <div class="sec-title">Add new loan</div>
+      <div class="fcard">
+        <div class="fgrid">
+          <div><label class="flabel">Vendor / lender</label><input id="ln-v" placeholder="e.g. Billease, GCash, Maya"></div>
+          <div><label class="flabel">Category</label>
+            <select id="ln-c"><option>Buy Now Pay Later</option><option>GCash Loan</option><option>Lazada Loan</option><option>Maya Loan</option><option>Personal Loan</option><option>Credit Card</option><option>External Loan</option><option>Other</option></select>
+          </div>
+          <div><label class="flabel">Monthly payment (₱)</label><input id="ln-m" type="number" placeholder="0.00" oninput="calcTotal()"></div>
+          <div>
+            <label class="flabel">Start month</label>
+            <div class="f2">
+              <select id="ln-sy" onchange="calcTotal()">${yOpts}</select>
+              <select id="ln-sm" onchange="calcTotal()">${mOpts}</select>
+            </div>
+          </div>
+          <div>
+            <label class="flabel">End month</label>
+            <div class="f2">
+              <select id="ln-ey" onchange="calcTotal()">${yOpts}</select>
+              <select id="ln-em" onchange="calcTotal()">${mOpts}</select>
+            </div>
+          </div>
+          <div class="calc-row" id="calc-preview">
+            <span>Total loan amount</span><strong>—</strong>
+          </div>
+          <button class="btn-add" onclick="addLoan()">+ Add loan</button>
+          <div class="fhint">Past months before ${fmtMk(TODAY_KEY)} are auto-marked paid</div>
+        </div>
+      </div>
+    </div>
+    <div style="height:8px"></div>`;
+  calcTotal();
+}
+
+function calcTotal(){
+  const m=parseFloat(document.getElementById('ln-m')?document.getElementById('ln-m').value:0)||0;
+  const sy=document.getElementById('ln-sy')?.value;
+  const sm=document.getElementById('ln-sm')?.value;
+  const ey=document.getElementById('ln-ey')?.value;
+  const em=document.getElementById('ln-em')?.value;
+  if(!sy||!sm||!ey||!em||!m){
+    const el=document.getElementById('calc-preview');
+    if(el) el.innerHTML='<span>Total loan amount</span><strong>—</strong>';
+    return;
+  }
+  const startKey=`${sy}-${sm}`, endKey=`${ey}-${em}`;
+  const months=mBetween(startKey,endKey)+1;
+  const el=document.getElementById('calc-preview');
+  if(!el) return;
+  if(months<=0){
+    el.innerHTML='<span style="color:var(--red)">End month must be after start</span><strong>—</strong>';
+    return;
+  }
+  const total=m*months;
+  el.innerHTML=`<span>${months} months × ${ph(m)}</span><strong>${ph(total)}</strong>`;
+}
+
+function addLoan(){
+  const v=document.getElementById('ln-v').value.trim();
+  const c=document.getElementById('ln-c').value;
+  const monthly=parseFloat(document.getElementById('ln-m').value);
+  const sy=document.getElementById('ln-sy').value;
+  const sm=document.getElementById('ln-sm').value;
+  const ey=document.getElementById('ln-ey').value;
+  const em=document.getElementById('ln-em').value;
+  if(!v||!monthly||monthly<=0){alert('Enter vendor name and monthly payment amount.');return;}
+  const startKey=`${sy}-${sm}`, endKey=`${ey}-${em}`;
+  if(endKey<startKey){alert('End month must be after or equal to start month.');return;}
+  const months=mBetween(startKey,endKey)+1;
+  const total=monthly*months;
+  const paidMonths=autoPaidMonths(startKey,endKey);
+  D.loans.push({id:D.nextId++,vendor:v,cat:c,total,monthly,startKey,endKey,paidMonths});
+  save(); renderLoans();
+}
+
+/* ── INCOME ── */
+function renderIncome(){
+  const k=D.viewKey;
+  const these=D.income.filter(x=>x.monthKey===k);
+  const total=these.reduce((s,x)=>s+x.amount,0);
+  document.getElementById('page-income').innerHTML=`
+    <div class="metrics" style="padding-top:14px">
+      <div class="mc" style="grid-column:span 2"><div class="mc-label">Total income — ${fmtMk(k)}</div><div class="mc-val g" style="font-size:26px">${ph(total)}</div></div>
+    </div>
+    <div class="sec">
+      <div class="sec-title">Entries</div>
+      <div class="card">
+        ${these.length===0?'<div class="empty">No income for this month yet</div>':
+          these.map(x=>`<div class="row">
+            <div class="rname"><strong>${x.label}</strong><small>${x.type}</small></div>
+            <span class="ramt g">${ph(x.amount)}</span>
+            <button class="del" onclick="delInc(${x.id})" aria-label="Delete">×</button>
+          </div>`).join('')}
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-title">Add income</div>
+      <div class="fcard"><div class="fgrid">
+        <div><label class="flabel">Description</label><input id="inc-l" placeholder="e.g. Salary ${fmtMk(k)}"></div>
+        <div class="f2">
+          <div><label class="flabel">Amount (₱)</label><input id="inc-a" type="number" placeholder="0.00"></div>
+          <div><label class="flabel">Type</label>
+            <select id="inc-t"><option>Salary</option><option>Freelance</option><option>Business</option><option>Investment</option><option>Allowance</option><option>Other</option></select>
+          </div>
+        </div>
+        <button class="btn-add" onclick="addInc()">+ Add income</button>
+      </div></div>
+    </div>
+    <div style="height:8px"></div>`;
+}
+
+function addInc(){
+  const l=document.getElementById('inc-l').value.trim();
+  const a=parseFloat(document.getElementById('inc-a').value);
+  const t=document.getElementById('inc-t').value;
+  if(!l||!a) return;
+  D.income.push({id:D.nextId++,label:l,amount:a,monthKey:D.viewKey,type:t});
+  save(); renderIncome();
+}
+function delInc(id){D.income=D.income.filter(x=>x.id!==id);save();renderIncome();}
+
+/* ── BILLS ── */
+function renderBills(){
+  const k=D.viewKey;
+  const these=D.bills.filter(b=>b.monthKey===k);
+  const unpaid=these.filter(b=>!b.paid), paid=these.filter(b=>b.paid);
+  document.getElementById('page-bills').innerHTML=`
+    <div class="metrics" style="padding-top:14px">
+      <div class="mc"><div class="mc-label">Unpaid</div><div class="mc-val r">${phc(unpaid.reduce((s,b)=>s+b.amount,0))}</div></div>
+      <div class="mc"><div class="mc-label">Paid</div><div class="mc-val g">${phc(paid.reduce((s,b)=>s+b.amount,0))}</div></div>
+    </div>
+    <div class="sec">
+      <div class="sec-title">Bills — ${fmtMk(k)}</div>
+      <div class="card">
+        ${these.length===0?'<div class="empty">No bills for this month yet</div>':''}
+        ${unpaid.map(b=>`<div class="row">
+          <button class="chk" onclick="toggleBill(${b.id})" aria-label="Mark paid">✓</button>
+          <div class="rname"><strong>${b.name}</strong><small>${b.cat}</small></div>
+          <span class="ramt r">${ph(b.amount)}</span>
+          <button class="del" onclick="delBill(${b.id})" aria-label="Delete">×</button>
+        </div>`).join('')}
+        ${paid.length>0&&unpaid.length>0?'<div class="subsep">Paid</div>':''}
+        ${paid.map(b=>`<div class="row is-paid">
+          <button class="chk paid" onclick="toggleBill(${b.id})" aria-label="Mark unpaid">✓</button>
+          <div class="rname"><strong>${b.name}</strong><small>${b.cat}</small></div>
+          <span class="ramt g">${ph(b.amount)}</span>
+          <button class="del" onclick="delBill(${b.id})" aria-label="Delete">×</button>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-title">Add bill</div>
+      <div class="fcard"><div class="fgrid">
+        <div><label class="flabel">Bill name</label><input id="bl-n" placeholder="e.g. Meralco, Rent, Tuition"></div>
+        <div class="f2">
+          <div><label class="flabel">Amount (₱)</label><input id="bl-a" type="number" placeholder="0.00"></div>
+          <div><label class="flabel">Category</label>
+            <select id="bl-c"><option>Utilities</option><option>Rent</option><option>Internet</option><option>GCash</option><option>Lazada</option><option>Maya</option><option>Tuition</option><option>Food</option><option>Transport</option><option>Insurance</option><option>Subscriptions</option><option>Other</option></select>
+          </div>
+        </div>
+        <button class="btn-add" onclick="addBill()">+ Add bill</button>
+      </div></div>
+    </div>
+    <div style="height:8px"></div>`;
+}
+
+function toggleBill(id){const b=D.bills.find(x=>x.id===id);if(b){b.paid=!b.paid;save();renderBills();}}
+function delBill(id){D.bills=D.bills.filter(x=>x.id!==id);save();renderBills();}
+function addBill(){
+  const n=document.getElementById('bl-n').value.trim();
+  const a=parseFloat(document.getElementById('bl-a').value);
+  const c=document.getElementById('bl-c').value;
+  if(!n||!a) return;
+  D.bills.push({id:D.nextId++,name:n,amount:a,monthKey:D.viewKey,cat:c,paid:false});
+  save(); renderBills();
+}
+
+function toggleLoan(id,k){
+  const l=D.loans.find(x=>x.id===id);
+  if(!l) return;
+  if(l.paidMonths.includes(k)) l.paidMonths=l.paidMonths.filter(m=>m!==k);
+  else l.paidMonths.push(k);
+  save(); render();
+}
+function delLoan(id){if(!confirm('Remove this loan?'))return;D.loans=D.loans.filter(x=>x.id!==id);save();renderLoans();}
+
+render();
+</script>
+</body>
+</html>
