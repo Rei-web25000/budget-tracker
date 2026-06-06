@@ -129,7 +129,7 @@ select option{background:var(--bg3)}
 
 <div class="hdr">
   <div class="hdr-top">
-    <span class="app-name">Budget·PH <span class="sync-dot" id="sync-dot" title="Sync status"></span></span>
+    <span class="app-name">Rei Budget <span class="sync-dot" id="sync-dot" onclick="showSyncStatus()" style="cursor:pointer" title="Tap for sync status"></span></span>
     <div class="mpill">
       <button class="nbtn" id="btn-prev" onclick="shiftM(-1)" aria-label="Previous">&#8249;</button>
       <span id="mlabel"></span>
@@ -157,7 +157,7 @@ select option{background:var(--bg3)}
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script>
-const STORE = 'budgetph_v3';
+const STORE = 'reibudget_v3';
 const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const _now = new Date();
 const TODAY = {y:_now.getFullYear(), m:_now.getMonth()+1};
@@ -186,40 +186,10 @@ function autoPaid(startKey, endKey){
 function seed(){
   return{
     viewKey:TODAY_KEY,
-    loans:[
-      /* ── BILLEASE (fixed monthly) ── */
-      {id:1, vendor:'Billease ₱2,080',  cat:'Buy Now Pay Later', total:2080,  monthly:420.74, flexible:false, startKey:'2026-04', endKey:'2026-09', paidMonths:autoPaid('2026-04','2026-09'), customPayments:{}},
-      {id:2, vendor:'Billease ₱13,000', cat:'Buy Now Pay Later', total:13000, monthly:1576.16,flexible:false, startKey:'2026-06', endKey:'2027-05', paidMonths:autoPaid('2026-06','2027-05'), customPayments:{}},
-      {id:3, vendor:'Billease ₱2,000',  cat:'Buy Now Pay Later', total:2000,  monthly:1110.32,flexible:false, startKey:'2026-06', endKey:'2026-07', paidMonths:autoPaid('2026-06','2026-07'), customPayments:{}},
-      {id:4, vendor:'Billease ₱6,000',  cat:'Buy Now Pay Later', total:6000,  monthly:3319.92,flexible:false, startKey:'2026-06', endKey:'2026-07', paidMonths:autoPaid('2026-06','2026-07'), customPayments:{}},
-      {id:5, vendor:'Billease ₱2,000b', cat:'Buy Now Pay Later', total:2000,  monthly:486.22, flexible:false, startKey:'2026-06', endKey:'2026-10', paidMonths:autoPaid('2026-06','2026-10'), customPayments:{}},
-      {id:6, vendor:'Billease ₱2,700',  cat:'Buy Now Pay Later', total:2700,  monthly:795.79, flexible:false, startKey:'2026-05', endKey:'2026-08', paidMonths:autoPaid('2026-05','2026-08'), customPayments:{}},
-      {id:7, vendor:'Billease ₱500',    cat:'Buy Now Pay Later', total:500,   monthly:193.75, flexible:false, startKey:'2026-05', endKey:'2026-07', paidMonths:autoPaid('2026-05','2026-07'), customPayments:{}},
-      {id:8, vendor:'Billease ₱7,000',  cat:'Buy Now Pay Later', total:7000,  monthly:1454,   flexible:false, startKey:'2026-04', endKey:'2026-09', paidMonths:autoPaid('2026-04','2026-09'), customPayments:{}},
-      {id:9, vendor:'Billease ₱2,000c', cat:'Buy Now Pay Later', total:2000,  monthly:302,    flexible:false, startKey:'2026-03', endKey:'2026-11', paidMonths:autoPaid('2026-03','2026-11'), customPayments:{}},
-      /* ── GCASH (fixed monthly) ── */
-      {id:10, vendor:'GCash ₱2,000', cat:'GCash Loan', total:2000, monthly:302.02, flexible:false, startKey:'2026-03', endKey:'2026-11', paidMonths:autoPaid('2026-03','2026-11'), customPayments:{}},
-      /* ── LAZADA (flexible — amount set per month) ── */
-      {id:11, vendor:'Lazada', cat:'Lazada Loan', total:0, monthly:0, flexible:true,
-       startKey:'2026-06', endKey:'2027-04',
-       paidMonths:autoPaid('2026-06','2027-04'),
-       customPayments:{
-         '2026-06':4255.89,
-         '2026-07':2449.97,
-         '2026-08':2449.97,
-         '2026-09':2450.05,
-         '2026-10':1023.50,
-         '2026-11':665.07,
-         '2026-12':424.93,
-         '2027-01':424.93,
-         '2027-02':424.93,
-         '2027-03':424.93,
-         '2027-04':426.61,
-       }},
-    ],
+    loans:[],
     income:[],
     bills:[],
-    nextId:300,
+    nextId:1,
     scriptUrl:'',
   };
 }
@@ -231,12 +201,86 @@ function save(){localStorage.setItem(STORE,JSON.stringify(D));}
 
 /* ── SYNC ── */
 let syncStatus='idle';
-function setSyncDot(s){
+function setSyncDot(s, errMsg){
   syncStatus=s;
   const dot=document.getElementById('sync-dot');
   if(!dot) return;
   dot.className='sync-dot '+(s==='ok'?'ok':s==='err'?'err':s==='busy'?'busy':'');
-  dot.title=s==='ok'?'Synced':s==='err'?'Sync failed — check URL':s==='busy'?'Syncing...':'Local only (no sync URL)';
+  dot.title=s==='ok'?'Synced':s==='err'?'Sync error — tap for details':s==='busy'?'Syncing...':'Local only';
+  if(errMsg) dot.dataset.errMsg=errMsg;
+  // Auto show toast on status change
+  if(s==='busy')     showSyncToast('syncing','⏳  Syncing...',null,false);
+  else if(s==='ok')  showSyncToast('ok','✓  Synced',null,true);
+  else if(s==='err') showSyncToast('err','⚠  Sync failed — tap for details',errMsg,true);
+}
+
+function showSyncStatus(){
+  const s=syncStatus;
+  const dot=document.getElementById('sync-dot');
+  const err=dot?dot.dataset.errMsg:'';
+  if(!D.scriptUrl){
+    showSyncModal('No sync URL set','You have not connected a Google Sheet yet.\n\nFix: Go to the ⚙ Sync tab, paste your Google Apps Script URL and tap Save URL.','idle');
+  } else if(s==='ok'){
+    showSyncModal('Synced ✓','Your data is up to date and saved to Google Sheets.\n\nLast sync was successful.','ok');
+  } else if(s==='busy'){
+    showSyncModal('Syncing...','Currently saving your data to Google Sheets.\n\nPlease wait a moment.','busy');
+  } else if(s==='err'){
+    const msg = err||'Unknown error';
+    let fix = 'How to fix:\n';
+    if(msg.includes('Failed to fetch')||msg.includes('NetworkError')){
+      fix += '→ Check your internet connection and try again.';
+    } else if(msg.includes('401')||msg.includes('403')){
+      fix += '→ Your Apps Script URL may have expired.\n→ Go to Apps Script → Deploy → Manage deployments → create a New version and redeploy.\n→ Update the URL in the ⚙ Sync tab.';
+    } else if(msg.includes('404')){
+      fix += '→ The Apps Script URL is incorrect or was deleted.\n→ Go to Apps Script → Deploy → Manage deployments → copy the correct URL.\n→ Update it in the ⚙ Sync tab.';
+    } else if(msg.includes('CORS')||msg.includes('cors')){
+      fix += '→ Make sure "Who has access" is set to Anyone when deploying.\n→ Redeploy the Apps Script with Anyone access.';
+    } else {
+      fix += '→ Open the ⚙ Sync tab and tap ↓ Pull from cloud to retry.\n→ If it keeps failing, redeploy your Apps Script.';
+    }
+    showSyncModal('Sync Error ⚠','Error: '+msg+'\n\n'+fix,'err');
+  }
+}
+
+function showSyncModal(title, message, type){
+  const existing=document.getElementById('sync-modal');
+  if(existing) existing.remove();
+  const colors={ok:'var(--green)',err:'var(--red)',busy:'var(--amber)',idle:'var(--text3)'};
+  const bgs={ok:'var(--green-dim)',err:'var(--red-dim)',busy:'var(--amber-dim)',idle:'var(--bg3)'};
+  const overlay=document.createElement('div');
+  overlay.id='sync-modal';
+  overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  overlay.innerHTML=`
+    <div style="background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--r);padding:20px;width:100%;max-width:360px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <div style="width:10px;height:10px;border-radius:50%;background:${colors[type]||'var(--text3)'};flex-shrink:0"></div>
+        <span style="font-size:14px;font-weight:600;color:var(--text)">${title}</span>
+        <button onclick="document.getElementById('sync-modal').remove()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer;margin-left:auto">×</button>
+      </div>
+      <div style="background:${bgs[type]||'var(--bg3)'};border-radius:var(--rs);padding:12px;font-size:12px;color:var(--text2);font-family:var(--mono);white-space:pre-wrap;line-height:1.7">${message}</div>
+      <button onclick="document.getElementById('sync-modal').remove()" class="btn-add" style="margin-top:12px">Got it</button>
+    </div>`;
+  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove();});
+  document.body.appendChild(overlay);
+}
+
+let syncToastTimer=null;
+function showSyncToast(type, msg, detail, autoHide){
+  let toast=document.getElementById('sync-toast');
+  if(!toast){
+    toast=document.createElement('div');
+    toast.id='sync-toast';
+    toast.style.cssText='position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:9998;pointer-events:none;transition:opacity .3s';
+    document.body.appendChild(toast);
+  }
+  const colors={ok:'var(--green)',err:'var(--red)',busy:'var(--amber)'};
+  const bgs={ok:'rgba(45,212,160,0.15)',err:'rgba(242,107,107,0.15)',busy:'rgba(240,168,85,0.15)'};
+  toast.innerHTML=`<div style="background:var(--bg3);border:0.5px solid ${colors[type]||'var(--border2)'};border-radius:99px;padding:6px 16px;font-size:12px;font-family:var(--mono);color:${colors[type]||'var(--text2)'};white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,0.3)">${msg}</div>`;
+  toast.style.opacity='1';
+  if(syncToastTimer) clearTimeout(syncToastTimer);
+  if(autoHide){
+    syncToastTimer=setTimeout(()=>{toast.style.opacity='0';},2500);
+  }
 }
 
 async function syncToSheet(){
@@ -268,7 +312,7 @@ async function syncToSheet(){
     setSyncDot('busy');
   }catch(e){
     console.error('Sync push error:',e);
-    setSyncDot('err');
+    setSyncDot('err', e.message||e.toString());
   }
 }
 
@@ -292,7 +336,7 @@ async function syncFromSheet(){
     }
   }catch(e){
     console.error('Sync pull error:',e);
-    setSyncDot('err');
+    setSyncDot('err', e.message||e.toString());
     return false;
   }
 }
@@ -550,8 +594,8 @@ function renderLoans(){
           <div>
             <label class="flabel">Payment type</label>
             <div class="toggle-row">
-              <button class="toggle-btn active" id="tog-fixed" onclick="setPayType('fixed')">🔒 Fixed monthly<br><span style="font-size:9px;opacity:.7">Billease, GCash</span></button>
-              <button class="toggle-btn" id="tog-flex" onclick="setPayType('flex')">🔄 Flexible amount<br><span style="font-size:9px;opacity:.7">Lazada, variable</span></button>
+              <button class="toggle-btn active" id="tog-fixed" onclick="setPayType('fixed')">🔒 Fixed monthly</button>
+              <button class="toggle-btn" id="tog-flex" onclick="setPayType('flex')">🔄 Flexible amount</button>
             </div>
           </div>
           <div id="monthly-field"><label class="flabel">Monthly payment (₱)</label><input id="ln-m" type="number" placeholder="0.00" oninput="calcTotal()"></div>
@@ -954,7 +998,7 @@ function renderSettings(){
       </div>
       <div style="border-top:0.5px solid var(--border);padding-top:12px;margin-top:4px">
         <p style="font-weight:500;color:var(--text);margin-bottom:10px">Setup steps:</p>
-        <div class="step"><div class="step-num">1</div><div>Go to <code>sheets.google.com</code> → create a new blank spreadsheet → name it <code>BudgetPH</code></div></div>
+        <div class="step"><div class="step-num">1</div><div>Go to <code>sheets.google.com</code> → create a new blank spreadsheet → name it <code>Rei Budget</code></div></div>
         <div class="step"><div class="step-num">2</div><div>Click <code>Extensions</code> → <code>Apps Script</code></div></div>
         <div class="step"><div class="step-num">3</div><div>Delete everything in the editor and paste the script below, then click Save (💾)</div></div>
         <div class="step"><div class="step-num">4</div><div>Click <code>Deploy</code> → <code>New deployment</code> → Type: <code>Web app</code> → Execute as: <code>Me</code> → Who has access: <code>Anyone</code> → Deploy</div></div>
@@ -980,7 +1024,7 @@ function renderSettings(){
 
 function getAppsScriptCode(){
   return `// ════════════════════════════════════════════════════════
-// BudgetPH — Google Apps Script
+// Rei Budget — Google Apps Script
 // Paste this entire code into your Apps Script editor
 // ════════════════════════════════════════════════════════
 
@@ -1508,7 +1552,7 @@ function exportData(){
   const blob=new Blob([JSON.stringify(D,null,2)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob);
-  a.download='budgetph-backup-'+TODAY_KEY+'.json';
+  a.download='reibudget-backup-'+TODAY_KEY+'.json';
   a.click();
 }
 
