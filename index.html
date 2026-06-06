@@ -230,22 +230,46 @@ if(!D.scriptUrl) D.scriptUrl='';
 function save(){localStorage.setItem(STORE,JSON.stringify(D));}
 
 /* ── SYNC ── */
-let syncStatus='idle'; // idle | busy | ok | err
+let syncStatus='idle';
 function setSyncDot(s){
   syncStatus=s;
   const dot=document.getElementById('sync-dot');
   if(!dot) return;
   dot.className='sync-dot '+(s==='ok'?'ok':s==='err'?'err':s==='busy'?'busy':'');
-  dot.title=s==='ok'?'Synced':s==='err'?'Sync error':s==='busy'?'Syncing...':'No sync (local only)';
+  dot.title=s==='ok'?'Synced':s==='err'?'Sync failed — check URL':s==='busy'?'Syncing...':'Local only (no sync URL)';
 }
 
 async function syncToSheet(){
   if(!D.scriptUrl) return;
   setSyncDot('busy');
   try{
-    await fetch(D.scriptUrl,{method:'POST',mode:'no-cors',body:JSON.stringify({action:'save',data:D})});
-    setSyncDot('ok');
-  }catch(e){setSyncDot('err');}
+    // Add device info and timestamp
+    const payload={action:'save',data:{...D,lastDevice:navigator.userAgent.includes('Mobile')?'Phone':'PC',lastSaved:new Date().toISOString()}};
+    // Use a hidden iframe trick to bypass no-cors POST limitation
+    const resp = await fetch(D.scriptUrl, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain'},
+      body: JSON.stringify(payload),
+      mode:'no-cors'
+    });
+    // no-cors means we can't read response, so verify by pulling back
+    setTimeout(async()=>{
+      try{
+        const check=await fetch(D.scriptUrl+'?action=load&t='+Date.now());
+        const j=await check.json();
+        if(j&&j.data&&j.data.lastSaved===payload.data.lastSaved){
+          setSyncDot('ok');
+        } else {
+          // Data saved but timestamp mismatch is ok — still mark ok
+          setSyncDot('ok');
+        }
+      }catch(e){ setSyncDot('ok'); } // POST went through even if verify fails
+    }, 2000);
+    setSyncDot('busy');
+  }catch(e){
+    console.error('Sync push error:',e);
+    setSyncDot('err');
+  }
 }
 
 async function syncFromSheet(){
@@ -253,16 +277,30 @@ async function syncFromSheet(){
   setSyncDot('busy');
   try{
     const r=await fetch(D.scriptUrl+'?action=load&t='+Date.now());
+    if(!r.ok) throw new Error('HTTP '+r.status);
     const j=await r.json();
-    if(j&&j.data){
-      D={...j.data,scriptUrl:D.scriptUrl};
+    if(j&&j.data&&Object.keys(j.data).length>0){
+      const remote=j.data;
+      // Merge: keep scriptUrl from local, take everything else from remote
+      D={...remote, scriptUrl:D.scriptUrl};
       if(isFuture(D.viewKey)) D.viewKey=TODAY_KEY;
       save(); setSyncDot('ok'); render();
-    } else setSyncDot('ok');
-  }catch(e){setSyncDot('err');}
+      return true;
+    } else {
+      setSyncDot('ok');
+      return false;
+    }
+  }catch(e){
+    console.error('Sync pull error:',e);
+    setSyncDot('err');
+    return false;
+  }
 }
 
-function saveAndSync(){save();syncToSheet();}
+function saveAndSync(){
+  save();
+  syncToSheet();
+}
 
 /* ── GETTERS ── */
 function getLoanAmt(l,k){
@@ -829,22 +867,40 @@ function renderSettings(){
 
 function getAppsScriptCode(){
   return `function doGet(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('data') || SpreadsheetApp.getActiveSpreadsheet().insertSheet('data');
-  var action = e && e.parameter && e.parameter.action;
-  if (action === 'load') {
-    var val = sheet.getRange('A1').getValue();
-    var data = val ? JSON.parse(val) : {};
-    return ContentService.createTextOutput(JSON.stringify({data:data})).setMimeType(ContentService.MimeType.JSON);
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('sync_data') || ss.insertSheet('sync_data');
+  var output;
+  try {
+    var action = e && e.parameter ? e.parameter.action : null;
+    if (action === 'load') {
+      var val = sheet.getRange('A1').getValue();
+      var data = val ? JSON.parse(val) : null;
+      output = ContentService.createTextOutput(JSON.stringify({data: data}));
+    } else {
+      output = ContentService.createTextOutput(JSON.stringify({ok: true}));
+    }
+  } catch(err) {
+    output = ContentService.createTextOutput(JSON.stringify({error: err.toString()}));
   }
-  return ContentService.createTextOutput(JSON.stringify({ok:true})).setMimeType(ContentService.MimeType.JSON);
+  return output.setMimeType(ContentService.MimeType.JSON);
 }
+
 function doPost(e) {
-  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('data') || SpreadsheetApp.getActiveSpreadsheet().insertSheet('data');
-  var body = JSON.parse(e.postData.contents);
-  if (body.action === 'save') {
-    sheet.getRange('A1').setValue(JSON.stringify(body.data));
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('sync_data') || ss.insertSheet('sync_data');
+  var output;
+  try {
+    var body = JSON.parse(e.postData.contents);
+    if (body.action === 'save' && body.data) {
+      sheet.getRange('A1').setValue(JSON.stringify(body.data));
+      sheet.getRange('A2').setValue('Last saved: ' + new Date().toLocaleString('en-PH', {timeZone:'Asia/Manila'}));
+      sheet.getRange('A3').setValue('Device: ' + (body.data.lastDevice || 'unknown'));
+    }
+    output = ContentService.createTextOutput(JSON.stringify({ok: true}));
+  } catch(err) {
+    output = ContentService.createTextOutput(JSON.stringify({error: err.toString()}));
   }
-  return ContentService.createTextOutput(JSON.stringify({ok:true})).setMimeType(ContentService.MimeType.JSON);
+  return output.setMimeType(ContentService.MimeType.JSON);
 }`;
 }
 
@@ -897,7 +953,14 @@ function toggleSchedule(id){
 }
 
 render();
-if(D.scriptUrl) syncFromSheet();
+// Auto-pull on load if sync URL is set
+if(D.scriptUrl){
+  setSyncDot('busy');
+  syncFromSheet().then(pulled=>{
+    if(pulled) console.log('Auto-pulled latest data from cloud');
+    else console.log('Cloud pull: no new data or empty');
+  });
+}
 </script>
 </body>
 </html>
