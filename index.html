@@ -485,7 +485,7 @@ function renderLoans(){
                 <div style="font-size:11px;color:var(--text3)">${l.cat}</div>
               </div>
               ${badge}
-              <button onclick="editLoan(${l.id})" style="background:none;border:0.5px solid var(--border2);border-radius:6px;color:var(--text2);font-size:11px;font-family:var(--mono);cursor:pointer;padding:3px 8px;margin-right:4px">✏</button>
+              <button onclick="editLoan(${l.id})" style="background:none;border:none;cursor:pointer;font-size:18px;padding:0 4px;margin-right:2px;line-height:1;opacity:0.7" aria-label="Edit loan">✏️</button>
               <button class="del" onclick="delLoan(${l.id})" aria-label="Delete">×</button>
             </div>
             <div class="lgrid">
