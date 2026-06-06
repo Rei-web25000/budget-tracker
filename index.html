@@ -979,7 +979,12 @@ function renderSettings(){
 }
 
 function getAppsScriptCode(){
-  return `function doGet(e) {
+  return `// ════════════════════════════════════════════════════════
+// BudgetPH — Google Apps Script
+// Paste this entire code into your Apps Script editor
+// ════════════════════════════════════════════════════════
+
+function doGet(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName('sync_data') || ss.insertSheet('sync_data');
   var output;
@@ -988,33 +993,503 @@ function getAppsScriptCode(){
     if (action === 'load') {
       var val = sheet.getRange('A1').getValue();
       var data = val ? JSON.parse(val) : null;
-      output = ContentService.createTextOutput(JSON.stringify({data: data}));
+      output = ContentService.createTextOutput(JSON.stringify({ data: data }));
     } else {
-      output = ContentService.createTextOutput(JSON.stringify({ok: true}));
+      output = ContentService.createTextOutput(JSON.stringify({ ok: true }));
     }
   } catch(err) {
-    output = ContentService.createTextOutput(JSON.stringify({error: err.toString()}));
+    output = ContentService.createTextOutput(JSON.stringify({ error: err.toString() }));
   }
   return output.setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName('sync_data') || ss.insertSheet('sync_data');
+  var syncSheet = ss.getSheetByName('sync_data') || ss.insertSheet('sync_data');
   var output;
   try {
     var body = JSON.parse(e.postData.contents);
     if (body.action === 'save' && body.data) {
-      sheet.getRange('A1').setValue(JSON.stringify(body.data));
-      sheet.getRange('A2').setValue('Last saved: ' + new Date().toLocaleString('en-PH', {timeZone:'Asia/Manila'}));
-      sheet.getRange('A3').setValue('Device: ' + (body.data.lastDevice || 'unknown'));
+      var data = body.data;
+
+      // 1. Save raw JSON for loading back
+      syncSheet.getRange('A1').setValue(JSON.stringify(data));
+      syncSheet.getRange('A2').setValue('Last saved: ' + new Date().toLocaleString('en-PH', {timeZone:'Asia/Manila'}));
+      syncSheet.getRange('A3').setValue('Device: ' + (data.lastDevice || 'unknown'));
+
+      // 2. Write pretty tables
+      writeLoansSheet(ss, data);
+      writeBillsSheet(ss, data);
+      writeIncomeSheet(ss, data);
+      writeSummarySheet(ss, data);
     }
-    output = ContentService.createTextOutput(JSON.stringify({ok: true}));
+    output = ContentService.createTextOutput(JSON.stringify({ ok: true }));
   } catch(err) {
-    output = ContentService.createTextOutput(JSON.stringify({error: err.toString()}));
+    output = ContentService.createTextOutput(JSON.stringify({ error: err.toString() }));
   }
   return output.setMimeType(ContentService.MimeType.JSON);
-}`;
+}
+
+// ── HELPERS ──────────────────────────────────────────────
+function getSheet(ss, name) {
+  var s = ss.getSheetByName(name);
+  if (!s) s = ss.insertSheet(name);
+  return s;
+}
+
+function clearAndHeader(sheet, title, headers, bgHex) {
+  sheet.clearContents();
+  sheet.clearFormats();
+
+  // Title row
+  var titleRange = sheet.getRange(1, 1, 1, headers.length);
+  titleRange.merge();
+  titleRange.setValue(title);
+  titleRange.setBackground('#' + bgHex);
+  titleRange.setFontColor('#FFFFFF');
+  titleRange.setFontSize(12);
+  titleRange.setFontWeight('bold');
+  titleRange.setFontFamily('Arial');
+  titleRange.setHorizontalAlignment('left');
+  titleRange.setVerticalAlignment('middle');
+  sheet.setRowHeight(1, 28);
+
+  // Last updated row
+  var updRow = sheet.getRange(2, 1, 1, headers.length);
+  updRow.merge();
+  updRow.setValue('Last updated: ' + new Date().toLocaleString('en-PH', {timeZone:'Asia/Manila'}));
+  updRow.setBackground('#F8F9FA');
+  updRow.setFontColor('#7F8C8D');
+  updRow.setFontSize(9);
+  updRow.setFontFamily('Arial');
+  updRow.setFontStyle('italic');
+  sheet.setRowHeight(2, 18);
+
+  // Header row
+  var hdrRange = sheet.getRange(3, 1, 1, headers.length);
+  hdrRange.setValues([headers]);
+  hdrRange.setBackground('#1B2A4A');
+  hdrRange.setFontColor('#FFFFFF');
+  hdrRange.setFontSize(9);
+  hdrRange.setFontWeight('bold');
+  hdrRange.setFontFamily('Arial');
+  hdrRange.setHorizontalAlignment('center');
+  hdrRange.setVerticalAlignment('middle');
+  sheet.setRowHeight(3, 22);
+
+  return 4; // next data row
+}
+
+function styleRow(sheet, row, cols, isEven, isPaid, bgOverride) {
+  var bg = bgOverride || (isPaid ? '#EAF3DE' : (isEven ? '#FFFFFF' : '#F8F9FA'));
+  var range = sheet.getRange(row, 1, 1, cols);
+  range.setBackground(bg);
+  range.setFontFamily('Arial');
+  range.setFontSize(10);
+  range.setVerticalAlignment('middle');
+  sheet.setRowHeight(row, 20);
+}
+
+function setPH(sheet, row, col) {
+  sheet.getRange(row, col).setNumberFormat('₱#,##0.00;(₱#,##0.00);"-"');
+}
+
+function setColor(sheet, row, col, hex) {
+  sheet.getRange(row, col).setFontColor('#' + hex);
+}
+
+function setBold(sheet, row, col) {
+  sheet.getRange(row, col).setFontWeight('bold');
+}
+
+function monthName(key) {
+  if (!key) return '';
+  var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  var parts = key.split('-');
+  return months[parseInt(parts[1]) - 1] + ' ' + parts[0];
+}
+
+function getLoanAmt(loan, mk) {
+  if (loan.flexible) {
+    if (loan.customPayments && loan.customPayments[mk] !== undefined) return loan.customPayments[mk];
+    return null;
+  }
+  return loan.monthly;
+}
+
+// ── LOANS SHEET ──────────────────────────────────────────
+function writeLoansSheet(ss, data) {
+  var sheet = getSheet(ss, '💳 Loans');
+  var headers = ['#','Loan / Vendor','Category','Type','Total (₱)','Monthly (₱)','Start','End','Duration','Months Paid','Months Left','Total Paid (₱)','Balance Left (₱)','Status'];
+  var row = clearAndHeader(sheet, '💳  Loans Tracker — All Active & Completed Loans', '0F6E56', headers);
+
+  // Column widths
+  var widths = [30, 180, 150, 80, 110, 110, 80, 80, 80, 100, 90, 120, 120, 90];
+  widths.forEach(function(w, i) { sheet.setColumnWidth(i+1, w); });
+
+  var TODAY_KEY = getTodayKey();
+  var loans = data.loans || [];
+
+  // Separate active and done
+  var active = loans.filter(function(l) { return !isLoanDone(l); });
+  var done   = loans.filter(function(l) { return isLoanDone(l); });
+  var sorted = active.concat(done);
+
+  sorted.forEach(function(l, idx) {
+    var isDone = isLoanDone(l);
+    var isPaidThisMonth = l.paidMonths && l.paidMonths.indexOf(TODAY_KEY) >= 0;
+    var mTotal = monthsBetween(l.startKey, l.endKey) + 1;
+    var mPaid  = (l.paidMonths || []).length;
+    var mLeft  = Math.max(0, monthsBetween(TODAY_KEY, l.endKey) + 1);
+    var totalPaid = calcTotalPaid(l);
+    var balance = Math.max(0, l.total - totalPaid);
+    var status = isDone ? 'Paid Off' : isPaidThisMonth ? 'Paid this month' : 'Due';
+    var isEven = idx % 2 === 0;
+
+    var rowData = [
+      idx + 1,
+      l.vendor,
+      l.cat,
+      l.flexible ? 'Flexible' : 'Fixed',
+      l.total || '',
+      l.flexible ? '(varies)' : l.monthly,
+      monthName(l.startKey),
+      monthName(l.endKey),
+      mTotal + ' mo',
+      mPaid,
+      mLeft,
+      totalPaid,
+      balance,
+      status
+    ];
+
+    sheet.getRange(row, 1, 1, headers.length).setValues([rowData]);
+    styleRow(sheet, row, headers.length, isEven, isDone, null);
+
+    // Format currency
+    [5, 6, 12, 13].forEach(function(col) {
+      if (typeof rowData[col-1] === 'number') setPH(sheet, row, col);
+    });
+
+    // Color the status cell
+    var statusCell = sheet.getRange(row, 14);
+    if (status === 'Paid Off')          { statusCell.setBackground('#EAF3DE'); statusCell.setFontColor('#1D6A3A'); }
+    else if (status === 'Paid this month') { statusCell.setBackground('#D6EAF8'); statusCell.setFontColor('#1A5276'); }
+    else                                { statusCell.setBackground('#FADBD8'); statusCell.setFontColor('#C0392B'); }
+    statusCell.setHorizontalAlignment('center');
+    statusCell.setFontWeight('bold');
+
+    // Color type cell
+    var typeCell = sheet.getRange(row, 4);
+    if (l.flexible) { typeCell.setFontColor('#784212'); typeCell.setBackground('#FDEBD0'); }
+    else            { typeCell.setFontColor('#0F6E56'); }
+    typeCell.setHorizontalAlignment('center');
+
+    // Bold vendor
+    setBold(sheet, row, 2);
+
+    row++;
+  });
+
+  // Totals row
+  sheet.setRowHeight(row, 22);
+  sheet.getRange(row, 1, 1, headers.length).setBackground('#1B2A4A');
+  sheet.getRange(row, 1).setValue('TOTALS');
+  sheet.getRange(row, 1).setFontColor('#FFFFFF').setFontWeight('bold').setFontFamily('Arial');
+
+  var totalLoaned = loans.reduce(function(s,l){ return s+(l.total||0); }, 0);
+  var totalPaidAll = loans.reduce(function(s,l){ return s+calcTotalPaid(l); }, 0);
+  var totalBalance = loans.reduce(function(s,l){ return s+Math.max(0,(l.total||0)-calcTotalPaid(l)); }, 0);
+
+  [[5, totalLoaned],[12, totalPaidAll],[13, totalBalance]].forEach(function(pair) {
+    var cell = sheet.getRange(row, pair[0]);
+    cell.setValue(pair[1]);
+    cell.setFontColor('#FFFFFF').setFontWeight('bold').setFontFamily('Arial').setFontSize(10);
+    cell.setNumberFormat('₱#,##0.00;(₱#,##0.00);"-"');
+    cell.setHorizontalAlignment('right');
+  });
+}
+
+// ── BILLS SHEET ──────────────────────────────────────────
+function writeBillsSheet(ss, data) {
+  var sheet = getSheet(ss, '🧾 Bills');
+  var headers = ['#','Bill Name','Category','Month','Amount (₱)','Paid?','Notes'];
+  var row = clearAndHeader(sheet, '🧾  Bills — Monthly Obligations', 'C0392B', headers);
+
+  var widths = [30, 200, 130, 90, 120, 90, 200];
+  widths.forEach(function(w, i) { sheet.setColumnWidth(i+1, w); });
+
+  var bills = (data.bills || []).slice().sort(function(a,b) {
+    if (a.monthKey < b.monthKey) return 1;
+    if (a.monthKey > b.monthKey) return -1;
+    return 0;
+  });
+
+  // Group by month
+  var byMonth = {};
+  bills.forEach(function(b) {
+    if (!byMonth[b.monthKey]) byMonth[b.monthKey] = [];
+    byMonth[b.monthKey].push(b);
+  });
+
+  var months = Object.keys(byMonth).sort().reverse();
+  var num = 1;
+
+  months.forEach(function(mk) {
+    // Month header
+    sheet.setRowHeight(row, 20);
+    var mhdr = sheet.getRange(row, 1, 1, headers.length);
+    mhdr.merge();
+    mhdr.setValue('  📅  ' + monthName(mk));
+    mhdr.setBackground('#252a3a');
+    mhdr.setFontColor('#9FE1CB');
+    mhdr.setFontWeight('bold').setFontFamily('Arial').setFontSize(10);
+    row++;
+
+    byMonth[mk].forEach(function(b, idx) {
+      var isEven = idx % 2 === 0;
+      sheet.getRange(row, 1, 1, headers.length).setValues([[
+        num++, b.name, b.cat, monthName(b.monthKey), b.amount, b.paid ? 'Yes ✓' : 'No ☐', ''
+      ]]);
+      styleRow(sheet, row, headers.length, isEven, b.paid, null);
+      setPH(sheet, row, 5);
+
+      var paidCell = sheet.getRange(row, 6);
+      if (b.paid) {
+        paidCell.setBackground('#EAF3DE');
+        paidCell.setFontColor('#1D6A3A');
+        paidCell.setFontWeight('bold');
+        sheet.getRange(row, 2).setFontColor('#7F8C8D');
+      } else {
+        paidCell.setBackground('#FADBD8');
+        paidCell.setFontColor('#C0392B');
+        paidCell.setFontWeight('bold');
+      }
+      paidCell.setHorizontalAlignment('center');
+      row++;
+    });
+
+    // Month subtotal
+    var monthTotal = byMonth[mk].reduce(function(s,b){ return s+b.amount; }, 0);
+    var monthPaid  = byMonth[mk].reduce(function(s,b){ return s+(b.paid?b.amount:0); }, 0);
+    sheet.getRange(row, 1, 1, headers.length).setBackground('#F0F3F4');
+    sheet.getRange(row, 2).setValue('Subtotal — ' + monthName(mk));
+    sheet.getRange(row, 2).setFontWeight('bold').setFontFamily('Arial').setFontSize(10);
+    sheet.getRange(row, 5).setValue(monthTotal);
+    sheet.getRange(row, 5).setFontWeight('bold').setNumberFormat('₱#,##0.00;(₱#,##0.00);"-"');
+    sheet.getRange(row, 6).setValue('Paid: ₱' + monthPaid.toLocaleString('en-PH', {minimumFractionDigits:2}));
+    sheet.getRange(row, 6).setFontColor('#1D6A3A').setFontWeight('bold').setHorizontalAlignment('center');
+    sheet.setRowHeight(row, 20);
+    row++;
+  });
+}
+
+// ── INCOME SHEET ─────────────────────────────────────────
+function writeIncomeSheet(ss, data) {
+  var sheet = getSheet(ss, '💵 Income');
+  var headers = ['#','Description','Type','Month','Amount (₱)'];
+  var row = clearAndHeader(sheet, '💵  Income — All Entries', '0F6E56', headers);
+
+  var widths = [30, 220, 130, 90, 130];
+  widths.forEach(function(w, i) { sheet.setColumnWidth(i+1, w); });
+
+  var income = (data.income || []).slice().sort(function(a,b) {
+    if (a.monthKey < b.monthKey) return 1;
+    if (a.monthKey > b.monthKey) return -1;
+    return 0;
+  });
+
+  income.forEach(function(inc, idx) {
+    sheet.getRange(row, 1, 1, headers.length).setValues([[
+      idx+1, inc.label, inc.type, monthName(inc.monthKey), inc.amount
+    ]]);
+    styleRow(sheet, row, headers.length, idx%2===0, false, null);
+    setPH(sheet, row, 5);
+    setColor(sheet, row, 5, '0F6E56');
+    setBold(sheet, row, 5);
+    row++;
+  });
+
+  // Grand total
+  var total = income.reduce(function(s,i){ return s+i.amount; }, 0);
+  sheet.setRowHeight(row, 22);
+  sheet.getRange(row, 1, 1, headers.length).setBackground('#0F6E56');
+  sheet.getRange(row, 2).setValue('TOTAL INCOME');
+  sheet.getRange(row, 5).setValue(total);
+  [2,5].forEach(function(col){
+    sheet.getRange(row, col).setFontColor('#FFFFFF').setFontWeight('bold').setFontFamily('Arial').setFontSize(10);
+  });
+  sheet.getRange(row, 5).setNumberFormat('₱#,##0.00;(₱#,##0.00);"-"').setHorizontalAlignment('right');
+}
+
+// ── SUMMARY SHEET ────────────────────────────────────────
+function writeSummarySheet(ss, data) {
+  var sheet = getSheet(ss, '📊 Summary');
+  sheet.clearContents();
+  sheet.clearFormats();
+
+  var TODAY_KEY = getTodayKey();
+  var todayLabel = monthName(TODAY_KEY);
+
+  // Banner
+  sheet.getRange(1,1,1,4).merge();
+  sheet.getRange(1,1).setValue('📊  Budget Summary — ' + todayLabel);
+  sheet.getRange(1,1).setBackground('#1B2A4A').setFontColor('#FFFFFF')
+    .setFontSize(14).setFontWeight('bold').setFontFamily('Arial')
+    .setHorizontalAlignment('left').setVerticalAlignment('middle');
+  sheet.setRowHeight(1, 30);
+
+  sheet.getRange(2,1,1,4).merge();
+  sheet.getRange(2,1).setValue('Last updated: ' + new Date().toLocaleString('en-PH',{timeZone:'Asia/Manila'}));
+  sheet.getRange(2,1).setBackground('#F8F9FA').setFontColor('#7F8C8D')
+    .setFontSize(9).setFontStyle('italic').setFontFamily('Arial');
+  sheet.setRowHeight(2, 18);
+
+  sheet.setColumnWidth(1, 30);
+  sheet.setColumnWidth(2, 220);
+  sheet.setColumnWidth(3, 140);
+  sheet.setColumnWidth(4, 140);
+
+  var row = 4;
+
+  function writeSection(title, bg, items) {
+    // Section header
+    sheet.getRange(row, 1, 1, 4).merge();
+    sheet.getRange(row, 1).setValue('  ' + title);
+    sheet.getRange(row, 1).setBackground('#' + bg).setFontColor('#FFFFFF')
+      .setFontWeight('bold').setFontFamily('Arial').setFontSize(10)
+      .setHorizontalAlignment('left').setVerticalAlignment('middle');
+    sheet.setRowHeight(row, 22);
+    row++;
+
+    items.forEach(function(item, idx) {
+      var bg2 = idx % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
+      sheet.getRange(row, 1).setValue(idx+1);
+      sheet.getRange(row, 2).setValue(item.label);
+      sheet.getRange(row, 3).setValue(item.amount !== null && item.amount !== undefined ? item.amount : '—');
+      sheet.getRange(row, 4).setValue(item.status || '');
+
+      sheet.getRange(row, 1, 1, 4).setBackground(bg2).setFontFamily('Arial').setFontSize(10).setVerticalAlignment('middle');
+      sheet.getRange(row, 2).setFontWeight('bold');
+      if (typeof item.amount === 'number') {
+        sheet.getRange(row, 3).setNumberFormat('₱#,##0.00;(₱#,##0.00);"-"').setHorizontalAlignment('right');
+        sheet.getRange(row, 3).setFontColor('#' + (item.amtColor || '000000')).setFontWeight('bold');
+      }
+
+      // Status cell styling
+      var statusCell = sheet.getRange(row, 4);
+      statusCell.setHorizontalAlignment('center').setFontWeight('bold');
+      if (item.status === 'Paid ✓')      { statusCell.setBackground('#EAF3DE'); statusCell.setFontColor('#1D6A3A'); }
+      else if (item.status === 'Due ⚠')  { statusCell.setBackground('#FADBD8'); statusCell.setFontColor('#C0392B'); }
+      else if (item.status === 'Upcoming'){ statusCell.setBackground('#D6EAF8'); statusCell.setFontColor('#1A5276'); }
+
+      sheet.setRowHeight(row, 20);
+      row++;
+    });
+  }
+
+  // ── Income this month
+  var incThisMonth = (data.income || []).filter(function(i){ return i.monthKey === TODAY_KEY; });
+  var totalInc = incThisMonth.reduce(function(s,i){ return s+i.amount; }, 0);
+  writeSection('💵 INCOME — ' + todayLabel, '0F6E56',
+    incThisMonth.map(function(i){ return {label:i.label, amount:i.amount, status:'', amtColor:'0F6E56'}; })
+  );
+
+  // ── Loans due this month
+  var loans = data.loans || [];
+  var loansDue = loans.filter(function(l){
+    return TODAY_KEY >= l.startKey && TODAY_KEY <= l.endKey && !isLoanDone(l);
+  });
+  var totalLoans = 0;
+  writeSection('💳 LOANS DUE — ' + todayLabel, 'C0392B',
+    loansDue.map(function(l){
+      var amt = getLoanAmt(l, TODAY_KEY);
+      var paid = l.paidMonths && l.paidMonths.indexOf(TODAY_KEY) >= 0;
+      if (typeof amt === 'number') totalLoans += amt;
+      return {
+        label: l.vendor + ' (' + l.cat + ')',
+        amount: amt,
+        status: paid ? 'Paid ✓' : (amt === null ? 'Set amount' : 'Due ⚠'),
+        amtColor: paid ? '1D6A3A' : 'C0392B'
+      };
+    })
+  );
+
+  // ── Bills this month
+  var bills = (data.bills || []).filter(function(b){ return b.monthKey === TODAY_KEY; });
+  var totalBills = bills.reduce(function(s,b){ return s+b.amount; }, 0);
+  writeSection('🧾 BILLS DUE — ' + todayLabel, 'D4820A',
+    bills.map(function(b){
+      return {
+        label: b.name + ' (' + b.cat + ')',
+        amount: b.amount,
+        status: b.paid ? 'Paid ✓' : 'Due ⚠',
+        amtColor: b.paid ? '1D6A3A' : 'C0392B'
+      };
+    })
+  );
+
+  // ── Net balance box
+  row++;
+  var totalDue = totalLoans + totalBills;
+  var balance = totalInc - totalDue;
+
+  var summaryData = [
+    ['Total Income', totalInc, '#0F6E56'],
+    ['Total Loans Due', totalLoans, '#C0392B'],
+    ['Total Bills Due', totalBills, '#D4820A'],
+    ['NET BALANCE', balance, balance >= 0 ? '#0F6E56' : '#C0392B'],
+  ];
+
+  summaryData.forEach(function(item, idx) {
+    var isBal = item[0] === 'NET BALANCE';
+    sheet.getRange(row, 1, 1, 4).setBackground(isBal ? '#1B2A4A' : (idx%2===0?'#FFFFFF':'#F8F9FA'));
+    sheet.getRange(row, 2).setValue(item[0]);
+    sheet.getRange(row, 3).setValue(item[1]);
+    sheet.getRange(row, 2).setFontWeight('bold').setFontFamily('Arial').setFontSize(isBal?12:10);
+    sheet.getRange(row, 3).setFontWeight('bold').setFontFamily('Arial').setFontSize(isBal?12:10)
+      .setFontColor(isBal ? '#FFFFFF' : item[2])
+      .setNumberFormat('₱#,##0.00;(₱#,##0.00);"-"').setHorizontalAlignment('right');
+    if (isBal) sheet.getRange(row, 2).setFontColor('#FFFFFF');
+    sheet.setRowHeight(row, isBal ? 26 : 20);
+    row++;
+  });
+}
+
+// ── UTIL ─────────────────────────────────────────────────
+function getTodayKey() {
+  var now = new Date();
+  // Use Manila time
+  var manila = new Date(now.toLocaleString('en-US', {timeZone:'Asia/Manila'}));
+  var y = manila.getFullYear();
+  var m = String(manila.getMonth()+1).padStart(2,'0');
+  return y + '-' + m;
+}
+
+function monthsBetween(k1, k2) {
+  var a = k1.split('-'); var b = k2.split('-');
+  return (parseInt(b[0]) - parseInt(a[0])) * 12 + (parseInt(b[1]) - parseInt(a[1]));
+}
+
+function isLoanDone(l) {
+  var k = l.startKey;
+  while (k <= l.endKey) {
+    if (!l.paidMonths || l.paidMonths.indexOf(k) < 0) return false;
+    var parts = k.split('-');
+    var y = parseInt(parts[0]); var m = parseInt(parts[1]);
+    m++; if (m > 12) { m = 1; y++; }
+    k = y + '-' + String(m).padStart(2,'0');
+  }
+  return true;
+}
+
+function calcTotalPaid(l) {
+  return (l.paidMonths || []).reduce(function(s, mk) {
+    var amt = getLoanAmt(l, mk);
+    return s + (typeof amt === 'number' ? amt : 0);
+  }, 0);
+}
+`;
 }
 
 function copyScript(){
