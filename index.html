@@ -1061,11 +1061,17 @@ function doPost(e) {
       syncSheet.getRange('A2').setValue('Last saved: ' + new Date().toLocaleString('en-PH', {timeZone:'Asia/Manila'}));
       syncSheet.getRange('A3').setValue('Device: ' + (data.lastDevice || 'unknown'));
 
-      // 2. Write pretty tables
-      writeLoansSheet(ss, data);
-      writeBillsSheet(ss, data);
-      writeIncomeSheet(ss, data);
-      writeSummarySheet(ss, data);
+      // 2. Write pretty tables — each wrapped independently so one failure doesn't block others
+      var writeErrors = [];
+      try { writeLoansSheet(ss, data); } catch(e) { writeErrors.push('loans: ' + e); }
+      try { writeBillsSheet(ss, data); } catch(e) { writeErrors.push('bills: ' + e); }
+      try { writeIncomeSheet(ss, data); } catch(e) { writeErrors.push('income: ' + e); }
+      try { writeSummarySheet(ss, data); } catch(e) { writeErrors.push('summary: ' + e); }
+      if (writeErrors.length > 0) {
+        syncSheet.getRange('A4').setValue('Sheet errors: ' + writeErrors.join(' | '));
+      } else {
+        syncSheet.getRange('A4').setValue('');
+      }
     }
     output = ContentService.createTextOutput(JSON.stringify({ ok: true }));
   } catch(err) {
@@ -1076,9 +1082,18 @@ function doPost(e) {
 
 // ── HELPERS ──────────────────────────────────────────────
 function getSheet(ss, name) {
+  // Try exact match first
   var s = ss.getSheetByName(name);
-  if (!s) s = ss.insertSheet(name);
-  return s;
+  if (s) return s;
+  // Fallback: match by stripping emoji/symbols — handles encoding mismatches
+  var keyword = name.replace(/[^\w\s]/g, '').trim().toLowerCase();
+  var sheets = ss.getSheets();
+  for (var i = 0; i < sheets.length; i++) {
+    var n = sheets[i].getName().replace(/[^\w\s]/g, '').trim().toLowerCase();
+    if (n === keyword) return sheets[i];
+  }
+  // Create new sheet as last resort
+  return ss.insertSheet(name);
 }
 
 function clearAndHeader(sheet, title, headers, bgHex) {
