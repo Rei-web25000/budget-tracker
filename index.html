@@ -485,6 +485,7 @@ function renderLoans(){
                 <div style="font-size:11px;color:var(--text3)">${l.cat}</div>
               </div>
               ${badge}
+              <button onclick="editLoan(${l.id})" style="background:none;border:0.5px solid var(--border2);border-radius:6px;color:var(--text2);font-size:11px;font-family:var(--mono);cursor:pointer;padding:3px 8px;margin-right:4px">✏</button>
               <button class="del" onclick="delLoan(${l.id})" aria-label="Delete">×</button>
             </div>
             <div class="lgrid">
@@ -721,6 +722,118 @@ function toggleLoan(id,k){
   saveAndSync(); render();
 }
 function delLoan(id){if(!confirm('Remove this loan?'))return;D.loans=D.loans.filter(x=>x.id!==id);saveAndSync();renderLoans();}
+
+function editLoan(id){
+  const l=D.loans.find(x=>x.id===id); if(!l) return;
+
+  // Build a simple modal overlay
+  const existing=document.getElementById('edit-modal');
+  if(existing) existing.remove();
+
+  const overlay=document.createElement('div');
+  overlay.id='edit-modal';
+  overlay.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:999;display:flex;align-items:center;justify-content:center;padding:20px';
+
+  const years=[];
+  for(let y=TODAY.y-1;y<=TODAY.y+4;y++) years.push(y);
+  const yOpts=years.map(y=>`<option value="${y}" ${y===parseMk(l.endKey).y?'selected':''}>${y}</option>`).join('');
+  const mOpts=MN.map((n,i)=>`<option value="${String(i+1).padStart(2,'0')}" ${i+1===parseMk(l.endKey).m?'selected':''}>${n}</option>`).join('');
+  const syOpts=years.map(y=>`<option value="${y}" ${y===parseMk(l.startKey).y?'selected':''}>${y}</option>`).join('');
+  const smOpts=MN.map((n,i)=>`<option value="${String(i+1).padStart(2,'0')}" ${i+1===parseMk(l.startKey).m?'selected':''}>${n}</option>`).join('');
+
+  overlay.innerHTML=`
+    <div style="background:var(--bg2);border:0.5px solid var(--border2);border-radius:var(--r);padding:20px;width:100%;max-width:380px;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+        <span style="font-size:14px;font-weight:500;color:var(--text)">✏ Edit Loan</span>
+        <button onclick="document.getElementById('edit-modal').remove()" style="background:none;border:none;color:var(--text3);font-size:20px;cursor:pointer">×</button>
+      </div>
+      <div class="fgrid">
+        <div>
+          <label class="flabel">Vendor / title</label>
+          <input id="el-vendor" value="${l.vendor}">
+        </div>
+        <div>
+          <label class="flabel">Category</label>
+          <select id="el-cat">
+            ${['Buy Now Pay Later','Lazada Loan','GCash Loan','Maya Loan','Personal Loan','Credit Card','External Loan','Other'].map(o=>`<option ${o===l.cat?'selected':''}>${o}</option>`).join('')}
+          </select>
+        </div>
+        ${!l.flexible?`
+        <div>
+          <label class="flabel">Monthly payment (₱)</label>
+          <input id="el-monthly" type="number" value="${l.monthly}">
+        </div>`:`
+        <div style="background:var(--bg3);border-radius:var(--rs);padding:8px 10px">
+          <span style="font-size:11px;color:var(--amber);font-family:var(--mono)">🔄 Flexible loan — edit amounts per month in the schedule panel</span>
+        </div>`}
+        <div>
+          <label class="flabel">Total loan amount (₱)</label>
+          <input id="el-total" type="number" value="${l.total}">
+        </div>
+        <div>
+          <label class="flabel">Start month</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <select id="el-sy">${syOpts}</select>
+            <select id="el-sm">${smOpts}</select>
+          </div>
+        </div>
+        <div>
+          <label class="flabel">End month</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <select id="el-ey">${yOpts}</select>
+            <select id="el-em">${mOpts}</select>
+          </div>
+        </div>
+        <button class="btn-add" onclick="saveEditLoan(${id})">Save changes</button>
+        <button class="btn-sec" onclick="document.getElementById('edit-modal').remove()">Cancel</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(overlay);
+  // close on backdrop click
+  overlay.addEventListener('click',e=>{if(e.target===overlay) overlay.remove();});
+}
+
+function saveEditLoan(id){
+  const l=D.loans.find(x=>x.id===id); if(!l) return;
+  const vendor=document.getElementById('el-vendor').value.trim();
+  const cat=document.getElementById('el-cat').value;
+  const total=parseFloat(document.getElementById('el-total').value)||l.total;
+  const sy=document.getElementById('el-sy').value;
+  const sm=document.getElementById('el-sm').value;
+  const ey=document.getElementById('el-ey').value;
+  const em=document.getElementById('el-em').value;
+  const startKey=`${sy}-${sm}`;
+  const endKey=`${ey}-${em}`;
+
+  if(!vendor){alert('Vendor name cannot be empty.');return;}
+  if(endKey<startKey){alert('End month must be after start month.');return;}
+
+  l.vendor=vendor;
+  l.cat=cat;
+  l.total=total;
+  l.startKey=startKey;
+  l.endKey=endKey;
+
+  if(!l.flexible){
+    const monthly=parseFloat(document.getElementById('el-monthly').value);
+    if(monthly>0) l.monthly=monthly;
+  }
+
+  document.getElementById('edit-modal').remove();
+  saveAndSync();
+  render();
+  // small toast
+  showToast('Loan updated ✓');
+}
+
+function showToast(msg){
+  const t=document.createElement('div');
+  t.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:var(--green);color:#0f1117;padding:8px 18px;border-radius:99px;font-size:12px;font-family:var(--mono);font-weight:500;z-index:9999;pointer-events:none';
+  t.textContent=msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2500);
+}
 
 /* ── INCOME ── */
 function renderIncome(){
